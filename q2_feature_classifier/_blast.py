@@ -36,7 +36,8 @@ DEFAULTSTRAND = 'both'
 DEFAULTEVALUE = 0.001
 DEFAULTMINCONSENSUS = 0.51
 DEFAULTOUTPUTNOHITS = True
-
+DEFAULTTASK = 'blastn'
+DEFAULTUNGAPPED = False #able to toggle ungapped parameter
 
 # NOTE FOR THE FUTURE: should this be called blastn? would it be possible to
 # eventually generalize to e.g., blastp or blastx? or will this be too
@@ -45,24 +46,36 @@ DEFAULTOUTPUTNOHITS = True
 # accomplish this without code bloat. But the question is: would we want to
 # expose different parameters etc? My feeling is let's call this `blast` for
 # now and then cross that bridge when we come to it.
-def blast(query: DNAFASTAFormat,
-          reference_reads: DNAFASTAFormat,
+def blast(query: DNAFASTAFormat, #FASTA these can just be the same things blasting things together
+          reference_reads: DNAFASTAFormat, #FASTA files
           maxaccepts: int = DEFAULTMAXACCEPTS,
           perc_identity: float = DEFAULTPERCENTID,
           query_cov: float = DEFAULTQUERYCOV,
           strand: str = DEFAULTSTRAND,
           evalue: float = DEFAULTEVALUE,
+          task: str = DEFAULTTASK,
+          ungapped: bool = DEFAULTUNGAPPED,
           output_no_hits: bool = DEFAULTOUTPUTNOHITS) -> pd.DataFrame:
     perc_identity = perc_identity * 100
     query_cov = query_cov * 100
     seqs_fp = str(query)
+
+    #"6 qseqid sseqid qlen slen length pident evalue bitscore qseq sseq qstart qend sstart send gaps mismatch"
     ref_fp = str(reference_reads)
     # TODO: generalize to support other blast types?
     output = BLAST6Format()
-    cmd = ['blastn', '-query', seqs_fp, '-evalue', str(evalue), '-strand',
-           strand, '-outfmt', '6', '-subject', ref_fp, '-perc_identity',
-           str(perc_identity), '-qcov_hsp_perc', str(query_cov),
-           '-max_target_seqs', str(maxaccepts), '-out', str(output)]
+    
+    if ungapped == True: #adding ungapped on 
+        cmd = ['blastn', '-query', seqs_fp, '-evalue', str(evalue), '-strand',
+            strand, '-task', task, '-ungapped', '-outfmt','6','-subject', ref_fp, '-perc_identity',#editted task 
+            str(perc_identity), '-qcov_hsp_perc', str(query_cov),
+            '-max_target_seqs', str(maxaccepts), '-out', str(output)]    
+    
+    else: #leaving ungapped off 
+        cmd = ['blastn', '-query', seqs_fp, '-evalue', str(evalue), '-strand',
+            strand, '-task', task, '-outfmt','6','-subject', ref_fp, '-perc_identity',#editted task 
+            str(perc_identity), '-qcov_hsp_perc', str(query_cov),
+            '-max_target_seqs', str(maxaccepts), '-out', str(output)] 
     _run_command(cmd)
     # load as dataframe to quickly validate (note: will fail now if empty)
     result = output.view(pd.DataFrame)
@@ -96,7 +109,9 @@ def classify_consensus_blast(ctx,
                              evalue=DEFAULTEVALUE,
                              output_no_hits=DEFAULTOUTPUTNOHITS,
                              min_consensus=DEFAULTMINCONSENSUS,
-                             unassignable_label=DEFAULTUNASSIGNABLELABEL):
+                             unassignable_label=DEFAULTUNASSIGNABLELABEL,
+                             task = DEFAULTTASK,
+                             ungapped = DEFAULTUNGAPPED):
     search_db = ctx.get_action('feature_classifier', 'blast')
     lca = ctx.get_action('feature_classifier', 'find_consensus_annotation')
     result, = search_db(query=query, reference_reads=reference_reads,
@@ -124,7 +139,7 @@ def _run_command(cmd, verbose=True):
               "no longer exist.")
         print("\nCommand:", end=' ')
         print(" ".join(cmd), end='\n\n')
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd,  check = True)#check = True
 
 
 inputs = {'query': FeatureData[Sequence],
@@ -144,6 +159,8 @@ parameters = {'evalue': Float,
               'query_cov': Float % Range(0.0, 1.0, inclusive_end=True),
               'strand': Str % Choices(['both', 'plus', 'minus']),
               'output_no_hits': Bool,
+               'task': Str % Choices(['blastn','blastn-short']),#can list these all out or not...., ask Johnny
+               'ungapped': Bool,
               }
 
 parameter_descriptions = {
@@ -170,6 +187,9 @@ parameter_descriptions = {
                       'unclassified sequences, otherwise you may run into '
                       'errors downstream from missing feature IDs. Set to '
                       'FALSE to mirror default BLAST search.',
+    #TODO add all of the descriptions of task, etc... JOhnny
+    #'task': #Str % Choices(['blastn','blastn-short']),#can list these all out or not...., ask Johnny
+    #'ungapped': #Bool,
 }
 
 blast6_output = ('search_results', FeatureData[BLAST6])
